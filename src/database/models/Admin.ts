@@ -16,6 +16,17 @@ type AddressType = {
     state?: string
 }
 
+type StudentType = {
+    name : string
+    email : string
+    mobileNumber : number
+    address: string
+    fees : number
+    joinDate : Date
+    dob: Date
+    parentNumber: number
+}
+
 class Admin {
     @prop({type : () => String})
     public name?: string;
@@ -46,6 +57,9 @@ class Admin {
 
     @prop({type: () => [String]})
     public subjectTags? : string[]
+
+    @prop({type : () => [Object]})
+    public students?: StudentType[]
 }
 
 const AdminModel = getModelForClass(Admin);

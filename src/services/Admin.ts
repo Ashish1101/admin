@@ -4,8 +4,9 @@ const AdminModel = databaseLayer.AdminModel
 const repository = databaseLayer.repository
 import {HashPassword , comparePassword} from '../utils/passwordHash'
 import generateToken from '../utils/generateJwtToken'
+import {isStudentPresent} from '../utils/CheckForStudent'
 import { Channel } from 'amqplib'
-
+import {STUDENT_CRUD_EXCHANGE , CREATE_STUDENT_KEY} from '../queue/types'
 
 type AuthType = {
     email: string
@@ -18,47 +19,46 @@ type ReturnType = {
     data?: object
 } 
 
-type SuperAdminType = {
-    email?: string
-    password?:string
-    isActive?:boolean
-    name?:string
-    mobileNumber?:number
-    id : string
+type StudentType = {
+    name : string
+    email : string
+    mobileNumber : number
+    fees : number
+    address : string
+    parentNumber : number
+    dob : Date
+    joinDate : Date
+    id ?: string
 }
 
-type DeleteSuperAdminType = {
-    id : string
-}
-
-export const signUp = async (userInputs : AuthType , channel : Channel) : Promise<ReturnType | undefined> => {
-    const {email , password} = userInputs
-    try {
-        let superAdmin = await AdminModel.findOne({email:email});
-        if(superAdmin) {
-            // throw new Error('SuperAdmin already exists with this email')
-            return {message : "SuperAdmin already exists with this email"}
-        }
-        superAdmin = await AdminModel.create({
-            email : email,
-            password: password,
-            role : 'superAdmin'
-        })
+// export const signUp = async (userInputs : AuthType , channel : Channel) : Promise<ReturnType | undefined> => {
+//     const {email , password} = userInputs
+//     try {
+//         let superAdmin = await AdminModel.findOne({email:email});
+//         if(superAdmin) {
+//             // throw new Error('SuperAdmin already exists with this email')
+//             return {message : "SuperAdmin already exists with this email"}
+//         }
+//         superAdmin = await AdminModel.create({
+//             email : email,
+//             password: password,
+//             role : 'superAdmin'
+//         })
          
-        //testing admin queue
-        //hash the password
-        let hashedPass = await HashPassword(password)
-        superAdmin.password = hashedPass
-        //save super admin in database
-        await superAdmin.save();
-        return {
-            message: "SuperAdmin Created.",
-            data : superAdmin
-        }
-    } catch (err) {
-        console.log('error in superAdmin signup',err)
-    }
-}
+//         //testing admin queue
+//         //hash the password
+//         let hashedPass = await HashPassword(password)
+//         superAdmin.password = hashedPass
+//         //save super admin in database
+//         await superAdmin.save();
+//         return {
+//             message: "SuperAdmin Created.",
+//             data : superAdmin
+//         }
+//     } catch (err) {
+//         console.log('error in superAdmin signup',err)
+//     }
+// }
 
 export const signin = async (userInputs : AuthType) : Promise<ReturnType | undefined> => {
    try {
@@ -96,48 +96,53 @@ export const signin = async (userInputs : AuthType) : Promise<ReturnType | undef
    }
 }
 
-export const updateSuperAdmin = async (userInputs : SuperAdminType) : Promise<ReturnType | undefined> => {
+export const addStudent = async (userInputs : StudentType , channel : Channel ) : Promise<ReturnType |  undefined > => {
   try {
-      const {email , id , password , isActive , name , mobileNumber} = userInputs;
-      console.log('id' , id)
-      console.log(typeof id)
-      const superAdmin = await AdminModel.findOne({_id: id});
-      if(!superAdmin) {
-        return {message : "No superadmin found."}  
-      }
-      //update user context
-      const filter = {
-          id : id
-      }
-      
-      const update = {
-          $set: {
-              isActive : isActive,
-              name : name,
-              mobileNumber : mobileNumber
-          },
-      }
+      const {name , email , mobileNumber , fees , parentNumber , joinDate, dob , address , id} = userInputs
 
-      const updateById = await repository.updateById(filter , update)
+      //first check if there is already a student with that email or not
+      const admin = await AdminModel.findOne({_id : id});
+      if(!admin) {
+          return {message:"Not allowed to perform action."}
+      }
       
-      return {message : "Information updated" , data : updateById as any}
+      let isStudent = isStudentPresent(admin.students , email)
+      if(isStudent) {
+          return {message : "Student already exists."}
+      }
+      
+      let dataToSend : StudentType = {
+          email,
+          mobileNumber,
+          name,
+          fees,
+          parentNumber,
+          joinDate,
+          dob,
+          address,
+      }
+      //else send a message to queue with student data
+      //and store it to admin array also
+
+      let currentStudents = admin.students
+      currentStudents?.push(dataToSend)
+    //   console.log('------------------- DB Student ------------------', admin.students?.length)
+    //   console.log('------------------- Current Student ------------------', currentStudents?.length)
+    //   console.log('------------------- DB Student ------------------', currentStudents)
+
+    //we have to send the institute id with the student data so that there is no duplicacy
+      
+      await admin.updateOne({$set : {students : currentStudents}} , {new : true})
+      await admin.save()
+      const wait = channel.publish(STUDENT_CRUD_EXCHANGE, CREATE_STUDENT_KEY , Buffer.from(JSON.stringify({...dataToSend , id})))
+      if(wait) {
+          return {message : "Student Added Successfully."}
+      }
+    //   failure already exists
+      return {message : "Something went wrong!"}
   } catch (err) {
-      console.log('error in updatedSuperAdmin' , err)
+      console.log('err from create Student' , err)
   }
 }
 
-export const deleteSuperAdmin = async (userInputs : DeleteSuperAdminType) : Promise<ReturnType | undefined> => {
-     try {
-         const {id} = userInputs
-         const superAdmin = await AdminModel.findOne({_id : id});
-         if(!superAdmin) {
-             return {message : "No superAdmin found"}
-         }
-
-         await superAdmin.remove();
-
-         return {message : "superAdmin deleted successfully."}
-     } catch (err) {
-         console.log('error in delete superAdmin' , err)
-     }
-}
+//crudOperation Related to Students

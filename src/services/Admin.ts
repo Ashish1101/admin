@@ -108,7 +108,7 @@ export const addStudent = async (userInputs : StudentType , channel : Channel ) 
       
       let isStudent = isStudentPresent(admin.students , email)
       if(isStudent) {
-          return {message : "Student already exists."}
+          return {message : "Whoops! Student already exists."}
       }
       
       let dataToSend : StudentType = {

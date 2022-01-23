@@ -13,11 +13,12 @@ export const isStudentPresent = (data : StudentType[] | undefined, email : strin
     let isMatch = false
     if(data === undefined ) return false
     else {
-        data.forEach(student => {
-            if(student.email === email ) {
-                isMatch = true
-            }
-        })
-        return isMatch
+      for(let i = 0; i < data.length; i++) {
+          if(data[i].email === email) {
+              isMatch = true;
+              break;
+          }
+      }
     }
+    return isMatch
 }
